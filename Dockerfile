@@ -17,5 +17,5 @@ COPY . .
 # Expose port (Render will set PORT env var)
 EXPOSE 10000
 
-# Run with gunicorn
-CMD ["gunicorn", "main:app", "-b", "0.0.0.0:10000"]
+# Run with gunicorn - use shell form so $PORT is expanded
+CMD gunicorn main:app -b 0.0.0.0:$PORT
