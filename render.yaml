@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: stock-paper-trading
-    env: docker
-    dockerfilePath: ./Dockerfile
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
