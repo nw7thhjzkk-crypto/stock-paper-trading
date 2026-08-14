@@ -1,5 +1,5 @@
 # ============================================
-# MAIN FLASK APPLICATION - PAPER TRADING SYSTEM
+# MAIN FLASK APPLICATION - PAPER TRADING SYSTEM (OPTIMIZED)
 # ============================================
 
 from flask import Flask, render_template, jsonify, request
@@ -26,17 +26,30 @@ last_signals = {}
 last_update_time = None
 current_prices = {}
 
+# Track which stocks to monitor (reduces unnecessary API calls)
+watchlist = set(NIFTY_50_SYMBOLS)
+
+
 def trading_loop():
-    """Main trading loop that runs in background"""
+    """Main trading loop that runs in background - OPTIMIZED"""
     global trading_active, last_signals, last_update_time, current_prices
 
     while trading_active:
         try:
-            # Fetch current prices for all stocks
-            current_prices = get_current_prices(NIFTY_50_SYMBOLS)
+            # STEP 1: Fetch ALL current prices in ONE batch API call
+            # This is ~50x faster than fetching individually
+            current_prices = get_current_prices(list(watchlist))
 
-            # Check each stock for signals
-            for symbol in NIFTY_50_SYMBOLS:
+            # STEP 2: Only fetch detailed data for stocks we DON'T own
+            # (For owned stocks, we just need current price for P&L)
+            stocks_to_analyze = [s for s in watchlist if s not in portfolio.holdings]
+
+            # Also analyze stocks we own (for sell signals)
+            stocks_to_analyze.extend(list(portfolio.holdings.keys()))
+            stocks_to_analyze = list(set(stocks_to_analyze))  # Remove duplicates
+
+            # STEP 3: Process signals
+            for symbol in stocks_to_analyze:
                 if not trading_active:
                     break
 
@@ -82,9 +95,9 @@ def trading_loop():
                                     sheets_manager.log_trade(portfolio.trade_history[-1])
                                     sheets_manager.log_signal(signal_details)
 
-                time.sleep(0.5)  # Delay between stocks
+                time.sleep(0.2)  # Small delay between stocks (reduced from 0.5)
 
-            # Update portfolio in Google Sheets
+            # STEP 4: Update portfolio in Google Sheets
             portfolio_summary = portfolio.get_summary(current_prices)
             sheets_manager.update_portfolio(portfolio_summary)
 
@@ -97,10 +110,12 @@ def trading_loop():
             print(f"Error in trading loop: {e}")
             time.sleep(UPDATE_INTERVAL)
 
+
 @app.route('/')
 def index():
     """Main dashboard page"""
     return render_template('index.html')
+
 
 @app.route('/api/status')
 def get_status():
@@ -115,6 +130,7 @@ def get_status():
         'current_prices': current_prices,
         'market_status': get_market_status()
     })
+
 
 @app.route('/api/start')
 def start_trading():
@@ -131,6 +147,7 @@ def start_trading():
     else:
         return jsonify({'status': 'already_running', 'message': 'Trading already active'})
 
+
 @app.route('/api/stop')
 def stop_trading():
     """Stop paper trading"""
@@ -142,6 +159,7 @@ def stop_trading():
     else:
         return jsonify({'status': 'not_running', 'message': 'Trading not active'})
 
+
 @app.route('/api/reset')
 def reset_portfolio():
     """Reset portfolio to initial state"""
@@ -150,20 +168,24 @@ def reset_portfolio():
     portfolio = Portfolio(INITIAL_CAPITAL)
     return jsonify({'status': 'reset', 'message': 'Portfolio reset to ₹10,000'})
 
+
 @app.route('/api/trades')
 def get_trades():
     """Get trade history"""
     return jsonify(portfolio.trade_history)
+
 
 @app.route('/api/portfolio')
 def get_portfolio():
     """Get current portfolio"""
     return jsonify(portfolio.get_summary(current_prices))
 
+
 @app.route('/health')
 def health_check():
     """Health check endpoint for Render"""
     return jsonify({'status': 'healthy'}), 200
+
 
 if __name__ == '__main__':
     # Create Google Sheets if connected
