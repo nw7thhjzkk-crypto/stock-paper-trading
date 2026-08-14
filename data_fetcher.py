@@ -1,29 +1,41 @@
 # ============================================
-# DATA FETCHER - LIVE STOCK DATA FROM YAHOO FINANCE
+# DATA FETCHER - OPTIMIZED BATCH FETCHING
 # ============================================
 
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import time
+import threading
+from functools import lru_cache
+
+# Cache for stock data to avoid re-fetching every cycle
+_data_cache = {}
+_cache_lock = threading.Lock()
+_cache_ttl = 60  # seconds
+
 
 def fetch_stock_data(symbol, timeframe="5m", period="1d"):
     """
-    Fetch stock data from Yahoo Finance
-    
-    Args:
-        symbol: Stock symbol (e.g., RELIANCE.NS)
-        timeframe: Time interval (1m, 5m, 15m, 1h, 1d)
-        period: Data period (1d, 5d, 1mo, 3mo)
-    
-    Returns:
-        DataFrame with OHLCV data or None if error
+    Fetch stock data from Yahoo Finance with caching
     """
+    cache_key = f"{symbol}_{timeframe}_{period}"
+
+    # Check cache first
+    with _cache_lock:
+        if cache_key in _data_cache:
+            cached_time, cached_data = _data_cache[cache_key]
+            if time.time() - cached_time < _cache_ttl:
+                return cached_data
+
     try:
         stock = yf.Ticker(symbol)
         data = stock.history(period=period, interval=timeframe)
-        
+
         if data is not None and len(data) > 0:
+            # Update cache
+            with _cache_lock:
+                _data_cache[cache_key] = (time.time(), data)
             return data
         else:
             return None
@@ -31,79 +43,79 @@ def fetch_stock_data(symbol, timeframe="5m", period="1d"):
         print(f"Error fetching {symbol}: {e}")
         return None
 
-def fetch_multiple_stocks(symbols, timeframe="5m"):
-    """
-    Fetch data for multiple stocks
-    
-    Args:
-        symbols: List of stock symbols
-        timeframe: Time interval
-    
-    Returns:
-        Dictionary: {symbol: DataFrame}
-    """
-    data_dict = {}
-    failed_symbols = []
-    
-    for symbol in symbols:
-        try:
-            data = fetch_stock_data(symbol, timeframe)
-            if data is not None and len(data) > 0:
-                data_dict[symbol] = data
-            else:
-                failed_symbols.append(symbol)
-        except:
-            failed_symbols.append(symbol)
-        
-        # Small delay to avoid rate limiting
-        time.sleep(0.5)
-    
-    return data_dict, failed_symbols
 
 def get_current_prices(symbols):
     """
-    Get current prices for multiple stocks quickly
-    
-    Args:
-        symbols: List of stock symbols
-    
-    Returns:
-        Dictionary: {symbol: current_price}
+    Get current prices for multiple stocks using BATCH download (single API call)
+    MUCH faster than fetching one by one
     """
     prices = {}
-    
+
+    if not symbols:
+        return prices
+
     try:
-        for symbol in symbols:
-            stock = yf.Ticker(symbol)
-            history = stock.history(period="1d", interval="1m")
-            
-            if history is not None and len(history) > 0:
-                prices[symbol] = history['Close'].iloc[-1]
-            
-            time.sleep(0.3)  # Rate limiting protection
-    
+        # Use yfinance batch download - fetches all tickers in ONE API call
+        # This is dramatically faster than individual Ticker calls
+        tickers_str = " ".join(symbols)
+        data = yf.download(
+            tickers=tickers_str,
+            period="1d",
+            interval="1m",
+            group_by='ticker',
+            progress=False,
+            threads=True  # Use threading for even faster fetching
+        )
+
+        if data is not None and len(data) > 0:
+            if len(symbols) == 1:
+                # Single ticker returns flat DataFrame
+                symbol = symbols[0]
+                if 'Close' in data.columns and len(data) > 0:
+                    prices[symbol] = float(data['Close'].iloc[-1])
+            else:
+                # Multiple tickers returns MultiIndex DataFrame
+                for symbol in symbols:
+                    try:
+                        if symbol in data.columns.get_level_values(0):
+                            close_prices = data[symbol]['Close'].dropna()
+                            if len(close_prices) > 0:
+                                prices[symbol] = float(close_prices.iloc[-1])
+                    except Exception:
+                        pass  # Skip symbols that failed
+
     except Exception as e:
-        print(f"Error fetching prices: {e}")
-    
+        print(f"Error in batch price fetch: {e}")
+        # Fallback: try individual fetches for missing symbols
+        for symbol in symbols:
+            if symbol not in prices:
+                try:
+                    stock = yf.Ticker(symbol)
+                    hist = stock.history(period="1d", interval="1m")
+                    if hist is not None and len(hist) > 0:
+                        prices[symbol] = float(hist['Close'].iloc[-1])
+                        time.sleep(0.1)
+                except Exception:
+                    pass
+
     return prices
 
+
 def get_stock_info(symbol):
-    """
-    Get basic stock information
-    """
+    """Get basic stock information"""
     try:
         stock = yf.Ticker(symbol)
-        info = stock.info
-        
+        info = stock.fast_info  # fast_info is much quicker than .info
+
         return {
             'symbol': symbol,
-            'name': info.get('longName', symbol),
-            'sector': info.get('sector', 'N/A'),
-            'market_cap': info.get('marketCap', 0),
-            'previous_close': info.get('previousClose', 0),
-            'open': info.get('open', 0),
-            'day_high': info.get('dayHigh', 0),
-            'day_low': info.get('dayLow', 0)
+            'name': getattr(info, 'longName', symbol),
+            'sector': getattr(info, 'sector', 'N/A'),
+            'market_cap': getattr(info, 'marketCap', 0),
+            'previous_close': getattr(info, 'previousClose', 0),
+            'open': getattr(info, 'open', 0),
+            'day_high': getattr(info, 'dayHigh', 0),
+            'day_low': getattr(info, 'dayLow', 0)
         }
     except:
         return {
@@ -117,17 +129,18 @@ def get_stock_info(symbol):
             'day_low': 0
         }
 
+
 def get_market_status():
     """
     Check if Indian market is open
     Market hours: 9:15 AM - 3:30 PM IST (Mon-Fri)
     """
     now = datetime.now()
-    
+
     # Check if weekday
     if now.weekday() >= 5:  # Saturday=5, Sunday=6
         return False, "Market closed (Weekend)"
-    
+
     # Check market hours
     current_time = now.strftime("%H:%M")
     if "09:15" <= current_time <= "15:30":
