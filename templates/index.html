@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Trading Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .status-active {
+            background: #10b981;
+            color: white;
+        }
+        
+        .status-inactive {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 25px;
+            border-radius: 25px;
+            border: none;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            color: white;
+        }
+        
+        .btn-start {
+            background: #10b981;
+        }
+        
+        .btn-start:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+        
+        .btn-stop {
+            background: #ef4444;
+        }
+        
+        .btn-stop:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+        
+        .btn-reset {
+            background: #6b7280;
+        }
+        
+        .btn-reset:hover {
+            background: #4b5563;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .stat-box {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .stat-positive {
+            color: #10b981 !important;
+        }
+        
+        .stat-negative {
+            color: #ef4444 !important;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: #f3f4f6;
+            padding: 10px;
+            text-align: left;
+            font-size: 12px;
+            color: #6b7280;
+            position: sticky;
+            top: 0;
+        }
+        
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 14px;
+        }
+        
+        .signal-buy {
+            color: #10b981;
+            font-weight: bold;
+            padding: 3px 8px;
+            background: #d1fae5;
+            border-radius: 5px;
+        }
+        
+        .signal-sell {
+            color: #ef4444;
+            font-weight: bold;
+            padding: 3px 8px;
+            background: #fee2e2;
+            border-radius: 5px;
+        }
+        
+        .signal-hold {
+            color: #6b7280;
+            font-weight: bold;
+            padding: 3px 8px;
+            background: #e5e7eb;
+            border-radius: 5px;
+        }
+        
+        .market-open {
+            color: #10b981;
+            font-weight: bold;
+        }
+        
+        .market-closed {
+            color: #ef4444;
+            font-weight: bold;
+        }
+        
+        .update-time {
+            font-size: 12px;
+            color: #6b7280;
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 Paper Trading Dashboard</h1>
+            <p>Virtual Capital: ₹10,000 | NIFTY 50 Stocks</p>
+        </div>
+        
+        <div class="card">
+            <center>
+                <div id="statusBadge" class="status-badge status-inactive">⏸️ Stopped</div>
+                <br>
+                <button class="btn btn-start" onclick="startTrading()">▶️ Start Trading</button>
+                <button class="btn btn-stop" onclick="stopTrading()">⏹️ Stop Trading</button>
+                <button class="btn btn-reset" onclick="resetPortfolio()">🔄 Reset</button>
+            </center>
+        </div>
+        
+        <div class="card">
+            <h3 style="margin-bottom: 15px;">💰 Portfolio Summary</h3>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-label">Total Value</div>
+                    <div class="stat-value" id="totalValue">₹10,000</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Cash Balance</div>
+                    <div class="stat-value" id="cashBalance">₹10,000</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Profit/Loss</div>
+                    <div class="stat-value" id="profitLoss">₹0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Win Rate</div>
+                    <div class="stat-value" id="winRate">0%</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3 style="margin-bottom: 15px;">📊 Market Status</h3>
+            <div id="marketStatus">Checking...</div>
+            <div class="update-time" id="lastUpdate">Last update: Never</div>
+        </div>
+        
+        <div class="card">
+            <h3 style="margin-bottom: 15px;">📋 Recent Signals</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Stock</th>
+                            <th>Price</th>
+                            <th>Signal</th>
+                            <th>Change</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signalsTable">
+                        <tr>
+                            <td colspan="4" style="text-align: center;">No signals yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3 style="margin-bottom: 15px;">📈 Holdings</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Stock</th>
+                            <th>Qty</th>
+                            <th>Avg Price</th>
+                        </tr>
+                    </thead>
+                    <tbody id="holdingsTable">
+                        <tr>
+                            <td colspan="3" style="text-align: center;">No holdings</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function updateDashboard() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Update status
+                    if (data.trading_active) {
+                        document.getElementById('statusBadge').className = 'status-badge status-active';
+                        document.getElementById('statusBadge').textContent = '✅ Trading Active';
+                    } else {
+                        document.getElementById('statusBadge').className = 'status-badge status-inactive';
+                        document.getElementById('statusBadge').textContent = '⏸️ Stopped';
+                    }
+                    
+                    // Update portfolio
+                    const portfolio = data.portfolio;
+                    document.getElementById('totalValue').textContent = '₹' + portfolio.total_value.toFixed(2);
+                    document.getElementById('cashBalance').textContent = '₹' + portfolio.cash.toFixed(2);
+                    
+                    const plElement = document.getElementById('profitLoss');
+                    plElement.textContent = '₹' + portfolio.profit_loss.toFixed(2);
+                    plElement.className = 'stat-value ' + (portfolio.profit_loss >= 0 ? 'stat-positive' : 'stat-negative');
+                    
+                    document.getElementById('winRate').textContent = portfolio.win_rate.toFixed(2) + '%';
+                    
+                    // Update market status
+                    const marketStatus = data.market_status;
+                    const marketElement = document.getElementById('marketStatus');
+                    if (marketStatus[0]) {
+                        marketElement.innerHTML = '<span class="market-open">🟢 ' + marketStatus[1] + '</span>';
+                    } else {
+                        marketElement.innerHTML = '<span class="market-closed">🔴 ' + marketStatus[1] + '</span>';
+                    }
+                    
+                    // Update last update time
+                    if (data.last_update) {
+                        document.getElementById('lastUpdate').textContent = 'Last update: ' + data.last_update;
+                    }
+                    
+                    // Update signals table
+                    updateSignalsTable(data.signals);
+                    
+                    // Update holdings table
+                    updateHoldingsTable(portfolio.holdings);
+                })
+                .catch(error => {
+                    console.error('Error fetching dashboard:', error);
+                });
+        }
+        
+        function updateSignalsTable(signals) {
+            const tbody = document.getElementById('signalsTable');
+            const signalKeys = Object.keys(signals).slice(-10).reverse();
+            
+            if (signalKeys.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No signals yet</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            signalKeys.forEach(symbol => {
+                const signal = signals[symbol];
+                const signalClass = signal.signal === 'BUY' ? 'signal-buy' : 
+                                   signal.signal === 'SELL' ? 'signal-sell' : 'signal-hold';
+                
+                html += '<tr>';
+                html += '<td>' + symbol.replace('.NS', '') + '</td>';
+                html += '<td>₹' + signal.price.toFixed(2) + '</td>';
+                html += '<td><span class="' + signalClass + '">' + signal.signal + '</span></td>';
+                html += '<td>' + (signal.change_percent >= 0 ? '+' : '') + signal.change_percent.toFixed(2) + '%</td>';
+                html += '</tr>';
+            });
+            
+            tbody.innerHTML = html;
+        }
+        
+        function updateHoldingsTable(holdings) {
+            const tbody = document.getElementById('holdingsTable');
+            const symbols = Object.keys(holdings);
+            
+            if (symbols.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No holdings</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            symbols.forEach(symbol => {
+                const holding = holdings[symbol];
+                html += '<tr>';
+                html += '<td>' + symbol.replace('.NS', '') + '</td>';
+                html += '<td>' + holding.quantity + '</td>';
+                html += '<td>₹' + holding.avg_price.toFixed(2) + '</td>';
+                html += '</tr>';
+            });
+            
+            tbody.innerHTML = html;
+        }
+        
+        function startTrading() {
+            fetch('/api/start')
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    updateDashboard();
+                });
+        }
+        
+        function stopTrading() {
+            fetch('/api/stop')
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    updateDashboard();
+                });
+        }
+        
+        function resetPortfolio() {
+            if (confirm('Are you sure you want to reset your portfolio to ₹10,000?')) {
+                fetch('/api/reset')
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        updateDashboard();
+                    });
+            }
+        }
+        
+        // Update dashboard every 5 seconds
+        setInterval(updateDashboard, 5000);
+        
+        // Initial update
+        updateDashboard();
+    </script>
+</body>
+</html>
